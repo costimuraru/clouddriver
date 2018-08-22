@@ -16,9 +16,10 @@
 
 package com.netflix.spinnaker.clouddriver.aws.deploy.ops
 
-import com.amazonaws.AmazonClientException
+import com.amazonaws.services.autoscaling.AmazonAutoScaling
 import com.amazonaws.services.autoscaling.model.AutoScalingGroup
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest
+import com.amazonaws.services.autoscaling.model.DescribeLifecycleHooksRequest
 import com.amazonaws.services.autoscaling.model.UpdateAutoScalingGroupRequest
 import com.amazonaws.services.ec2.AmazonEC2
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest
@@ -89,29 +90,26 @@ class ResizeAsgAtomicOperation implements AtomicOperation<Void> {
 
     autoScaling.updateAutoScalingGroup request
 
-
     if (capacity.desired == 0) {
       // there is an opportunity to expedite a resize to zero by explicitly terminating instances
       // (server group _must not_ be attached to a load balancer)
-      terminateInstancesInAutoScalingGroup(
-        amazonClientProvider.getAmazonEC2(description.credentials, region, true),
-        describeAutoScalingGroups.getAutoScalingGroups().get(0) as AutoScalingGroup
-      )
+      def amazonEC2 = amazonClientProvider.getAmazonEC2(description.credentials, region, true)
+      terminateInstancesInAutoScalingGroup(amazonEC2, autoScaling, autoScalingGroup)
     }
 
     task.updateStatus PHASE, "Completed resize of ${asgName} in ${region}."
   }
 
-  static void terminateInstancesInAutoScalingGroup(AmazonEC2 amazonEC2, AutoScalingGroup autoScalingGroup) {
-    if (!autoScalingGroup.loadBalancerNames.isEmpty() || !autoScalingGroup.targetGroupARNs.isEmpty()) {
-      task.updateStatus(
-        PHASE,
-        "Skipping explicit instance termination, server group is attached to one or more load balancers"
-      )
+  static void terminateInstancesInAutoScalingGroup(AmazonEC2 amazonEC2,
+                                                   AmazonAutoScaling autoScaling,
+                                                   AutoScalingGroup autoScalingGroup) {
+    def serverGroupName = autoScalingGroup.autoScalingGroupName
+    if (!canSafelyTerminateInstances(autoScaling, autoScalingGroup)) {
+      task.updateStatus(PHASE, "Skipping explicit instance termination, server group ${serverGroupName} " +
+        "is attached to one or more load balancers or has termination hooks")
       return
     }
 
-    def serverGroupName = autoScalingGroup.autoScalingGroupName
     def instanceIds = autoScalingGroup.instances.instanceId
 
     def terminatedCount = 0
@@ -123,6 +121,24 @@ class ResizeAsgAtomicOperation implements AtomicOperation<Void> {
       } catch (Exception e) {
         task.updateStatus PHASE, "Unable to terminate instances, reason: '${e.message}'"
       }
+    }
+  }
+
+  static boolean canSafelyTerminateInstances(AmazonAutoScaling autoScaling, AutoScalingGroup autoScalingGroup) {
+    def noLoadBalancers = autoScalingGroup.loadBalancerNames.isEmpty() && autoScalingGroup.targetGroupARNs.isEmpty()
+    def noTerminationHooks = getTerminationHooks(autoScaling, autoScalingGroup.getAutoScalingGroupName()).isEmpty()
+    return noLoadBalancers && noTerminationHooks
+  }
+
+  static def getTerminationHooks(AmazonAutoScaling autoScaling, String autoScaleGroupName) {
+    return getHooks(autoScaling, autoScaleGroupName, "EC2_INSTANCE_TERMINATING")
+  }
+
+  static def getHooks(AmazonAutoScaling autoScaling, String autoScaleGroupName, String transitionType) {
+    DescribeLifecycleHooksRequest request = new DescribeLifecycleHooksRequest()
+      .withAutoScalingGroupName(autoScaleGroupName)
+    return autoScaling.describeLifecycleHooks(request).getLifecycleHooks().findAll{ hook ->
+      transitionType.equals(hook.getLifecycleTransition())
     }
   }
 
