@@ -17,6 +17,7 @@
 package com.netflix.spinnaker.clouddriver.core
 
 import com.netflix.spectator.api.Registry
+import com.netflix.spinnaker.clouddriver.core.agent.CleanupPendingOnDemandCachesAgent
 import com.netflix.spinnaker.clouddriver.data.task.TaskRepository
 import com.netflix.spinnaker.clouddriver.data.task.jedis.RedisTaskRepository
 import com.netflix.spinnaker.kork.jedis.JedisClientDelegate
@@ -25,6 +26,8 @@ import com.netflix.spinnaker.kork.jedis.telemetry.InstrumentedJedis
 import com.netflix.spinnaker.kork.jedis.telemetry.InstrumentedJedisPool
 import org.apache.commons.pool2.impl.GenericObjectPool
 import org.apache.commons.pool2.impl.GenericObjectPoolConfig
+import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import org.springframework.boot.actuate.health.Health
 import org.springframework.boot.actuate.health.HealthIndicator
 import org.springframework.boot.autoconfigure.condition.ConditionalOnExpression
@@ -40,6 +43,7 @@ import redis.clients.jedis.Protocol
 @ConditionalOnExpression('${redis.enabled:true}')
 @EnableConfigurationProperties(RedisConfigurationProperties)
 class RedisConfig {
+  private static final Logger log = LoggerFactory.getLogger(RedisConfig.class);
   @Bean
   @ConfigurationProperties('redis')
   GenericObjectPoolConfig redisPoolConfig() {
@@ -91,6 +95,9 @@ class RedisConfig {
                                       String connection,
                                       int timeout,
                                       String name) {
+
+    log.info("[CMURARU] Creating JedisPool for connection: ${connection}, name: ${name}, " +
+      "redisPoolConfig: ${redisPoolConfig}, registry: ${registry}")
     URI redisConnection = URI.create(connection)
 
     String host = redisConnection.host
@@ -99,6 +106,9 @@ class RedisConfig {
     int database = Integer.parseInt((redisConnection.path ?: "/${Protocol.DEFAULT_DATABASE}").split('/', 2)[1])
 
     String password = redisConnection.userInfo ? redisConnection.userInfo.split(':', 2)[1] : null
+
+    log.info("[CMURARU][2] JedisPool for host: ${host}, port: ${port}, " +
+      "database: ${database}, password: ${password}")
 
     new InstrumentedJedisPool(
       registry,
