@@ -141,7 +141,8 @@ public class ClusteredAgentScheduler extends CatsModuleAware implements AgentSch
     try {
       runAgents();
     } catch (Throwable t) {
-      logger.error("Unable to run agents", t);
+      logger.error("Unable to run agents - NEW", t);
+      logger.error("Delegate: " + redisClientDelegate.name());
     }
   }
 
