@@ -20,6 +20,7 @@ import com.amazonaws.services.autoscaling.AmazonAutoScaling
 import com.amazonaws.services.autoscaling.model.AutoScalingGroup
 import com.amazonaws.services.autoscaling.model.DescribeAutoScalingGroupsRequest
 import com.amazonaws.services.autoscaling.model.DescribeLifecycleHooksRequest
+import com.amazonaws.services.autoscaling.model.LifecycleHook
 import com.amazonaws.services.autoscaling.model.UpdateAutoScalingGroupRequest
 import com.amazonaws.services.ec2.AmazonEC2
 import com.amazonaws.services.ec2.model.TerminateInstancesRequest
@@ -126,7 +127,12 @@ class ResizeAsgAtomicOperation implements AtomicOperation<Void> {
 
   static boolean canSafelyTerminateInstances(AmazonAutoScaling autoScaling, AutoScalingGroup autoScalingGroup) {
     def noLoadBalancers = autoScalingGroup.loadBalancerNames.isEmpty() && autoScalingGroup.targetGroupARNs.isEmpty()
-    def noTerminationHooks = getTerminationHooks(autoScaling, autoScalingGroup.getAutoScalingGroupName()).isEmpty()
+    def hooks = getTerminationHooks(autoScaling, autoScalingGroup.getAutoScalingGroupName())
+    task.updateStatus PHASE, "Existing ELBs: ${autoScalingGroup.loadBalancerNames}"
+    task.updateStatus PHASE, "Existing ALBs: ${autoScalingGroup.targetGroupARNs}"
+    task.updateStatus PHASE, "Existing termination hooks: ${hooks}"
+    def noTerminationHooks = hooks.isEmpty()
+    task.updateStatus PHASE, "noLoadBalancers: ${noLoadBalancers}, noTerminationHooks: ${noTerminationHooks}"
     return noLoadBalancers && noTerminationHooks
   }
 
