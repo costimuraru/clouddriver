@@ -22,8 +22,10 @@ import com.netflix.spinnaker.clouddriver.aws.deploy.description.UpsertAsgLifecyc
 import com.netflix.spinnaker.clouddriver.aws.security.AmazonClientProvider
 import com.netflix.spinnaker.clouddriver.aws.services.IdGenerator
 import com.netflix.spinnaker.clouddriver.orchestration.AtomicOperation
+import groovy.util.logging.Slf4j
 import org.springframework.beans.factory.annotation.Autowired
 
+@Slf4j
 class UpsertAsgLifecycleHookAtomicOperation implements AtomicOperation<Void> {
 
   private static final String BASE_PHASE = "UPSERT_ASG_LIFECYCLE"
@@ -55,6 +57,7 @@ class UpsertAsgLifecycleHookAtomicOperation implements AtomicOperation<Void> {
 
     final autoScaling = amazonClientProvider.getAutoScaling(description.credentials, description.region, true)
     autoScaling.putLifecycleHook(request)
+    log.warn("CREATING out-of-band lifecycle hook: " + request)
 
     return null
   }
