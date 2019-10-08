@@ -316,8 +316,6 @@ class BasicAmazonDeployHandler implements DeployHandler<BasicAmazonDeployDescrip
         )
       }
 
-      createLifecycleHooks(task, regionScopedProvider, account, description, asgName)
-
       description.events << new CreateServerGroupEvent(
         AmazonCloudProvider.ID, account.accountId, region, asgName
       )
